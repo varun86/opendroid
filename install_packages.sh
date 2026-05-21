@@ -14,6 +14,23 @@ echo "[1/5] Installing OpenJDK 17 and dependencies..."
 sudo apt-get update
 sudo apt-get install -y openjdk-17-jdk wget unzip curl git
 
+# Detect JDK 17 installation path to prevent unsupported class version errors if default Java is newer
+JDK_17_PATH=""
+for path in /usr/lib/jvm/java-17-openjdk-* /usr/lib/jvm/java-17-openjdk /usr/lib/jvm/java-1.17.0-openjdk-*; do
+    if [ -d "$path/bin" ]; then
+        JDK_17_PATH="$path"
+        break
+    fi
+done
+
+if [ -n "$JDK_17_PATH" ]; then
+    echo "Using JDK 17 at: $JDK_17_PATH"
+    export JAVA_HOME="$JDK_17_PATH"
+    export PATH="$JAVA_HOME/bin:$PATH"
+else
+    echo "Warning: JDK 17 path could not be auto-detected."
+fi
+
 # 2. Define Android SDK installation path
 ANDROID_HOME="$HOME/Android/Sdk"
 mkdir -p "$ANDROID_HOME/cmdline-tools"
@@ -49,12 +66,28 @@ sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 echo "[4/5] Configuring environment variables..."
 BASHRC="$HOME/.bashrc"
 
+# Configure JAVA_HOME
+if ! grep -q "JAVA_HOME" "$BASHRC"; then
+    echo "" >> "$BASHRC"
+    echo "# Java 17 environment variables" >> "$BASHRC"
+    if [ -n "$JDK_17_PATH" ]; then
+        echo "export JAVA_HOME=\"$JDK_17_PATH\"" >> "$BASHRC"
+    else
+        echo "export JAVA_HOME=\"/usr/lib/jvm/java-17-openjdk-amd64\"" >> "$BASHRC"
+    fi
+    echo "export PATH=\"\$JAVA_HOME/bin:\$PATH\"" >> "$BASHRC"
+    echo "Java 17 environment variables added to $BASHRC."
+else
+    echo "Java environment variables already present in $BASHRC."
+fi
+
+# Configure ANDROID_HOME
 if ! grep -q "ANDROID_HOME" "$BASHRC"; then
     echo "" >> "$BASHRC"
     echo "# Android SDK environment variables" >> "$BASHRC"
     echo "export ANDROID_HOME=\$HOME/Android/Sdk" >> "$BASHRC"
     echo "export PATH=\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools:\$PATH" >> "$BASHRC"
-    echo "Environment variables added to $BASHRC."
+    echo "Android SDK environment variables added to $BASHRC."
 else
     echo "Android SDK environment variables already present in $BASHRC."
 fi
