@@ -23,4 +23,7 @@ interface MacroDao {
 
     @Query("DELETE FROM macros WHERE id = :id")
     suspend fun deleteMacro(id: String)
+
+    @Query("DELETE FROM macros")
+    suspend fun clearAllMacros()
 }

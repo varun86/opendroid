@@ -123,6 +123,10 @@ class MemoryRepository @Inject constructor(
         macroDao.deleteMacro(id)
     }
 
+    suspend fun clearAllMacros() {
+        macroDao.clearAllMacros()
+    }
+
     private fun mapEntityToMacro(entity: MacroEntity): Macro {
         val steps = try {
             json.decodeFromString<List<PlanStep>>(entity.stepsJson)

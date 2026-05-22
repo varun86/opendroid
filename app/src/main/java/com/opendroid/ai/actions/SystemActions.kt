@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
+import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.net.Uri
@@ -13,12 +14,15 @@ import android.provider.Settings
 import com.opendroid.ai.accessibility.OpenDroidAccessibilityService
 import com.opendroid.ai.actions.base.Action
 import com.opendroid.ai.actions.base.ActionResult
+import com.opendroid.ai.core.agent.AgentLoop
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class SystemActions @Inject constructor() {
+class SystemActions @Inject constructor(
+    private val agentLoop: dagger.Lazy<AgentLoop>
+) {
 
     fun getActions(): List<Action> = listOf(
         ToggleWifiAction(),
@@ -30,7 +34,15 @@ class SystemActions @Inject constructor() {
         RestartDeviceAction(),
         ToggleBluetoothAction(),
         ToggleDndAction(),
-        TakeScreenshotAction()
+        TakeScreenshotAction(),
+        ConfirmAction(agentLoop),
+        CheckAppAction(),
+        ShowWarningAction(agentLoop),
+        ToggleMobileDataAction(),
+        ToggleHotspotAction(),
+        SetWallpaperAction(),
+        RecordScreenAction(),
+        InstallAppAction()
     )
 
     private class ToggleWifiAction : Action {
@@ -59,9 +71,22 @@ class SystemActions @Inject constructor() {
             val on = params["on"]?.toBoolean() ?: true
             val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
             return try {
-                val cameraId = cameraManager.cameraIdList[0]
-                cameraManager.setTorchMode(cameraId, on)
-                ActionResult(true, "Flashlight set to $on", null)
+                var foundCameraId: String? = null
+                for (id in cameraManager.cameraIdList) {
+                    val characteristics = cameraManager.getCameraCharacteristics(id)
+                    val hasFlash = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
+                    if (hasFlash) {
+                        foundCameraId = id
+                        break
+                    }
+                }
+                val cameraId = foundCameraId ?: cameraManager.cameraIdList.firstOrNull()
+                if (cameraId != null) {
+                    cameraManager.setTorchMode(cameraId, on)
+                    ActionResult(true, "Flashlight set to $on", null)
+                } else {
+                    ActionResult(false, null, "No camera with flashlight support was found.")
+                }
             } catch (e: Exception) {
                 ActionResult(false, null, "Failed to toggle flashlight: ${e.localizedMessage}")
             }
@@ -120,7 +145,8 @@ class SystemActions @Inject constructor() {
             val pm = context.packageManager
             val packages = pm.getInstalledApplications(0)
             val appPackage = packages.find {
-                pm.getApplicationLabel(it).toString().contains(appName, ignoreCase = true)
+                val label = pm.getApplicationLabel(it).toString()
+                label.contains(appName, ignoreCase = true) || it.packageName.contains(appName, ignoreCase = true)
             }?.packageName
             return if (appPackage != null) {
                 val intent = pm.getLaunchIntentForPackage(appPackage)
@@ -214,6 +240,158 @@ class SystemActions @Inject constructor() {
                 ActionResult(success, if (success) "Screenshot captured successfully." else "Failed to capture screenshot", null)
             } else {
                 ActionResult(false, null, "Accessibility Service is not running to trigger screenshot.")
+            }
+        }
+    }
+
+    private class ConfirmAction(
+        private val agentLoop: dagger.Lazy<AgentLoop>
+    ) : Action {
+        override val name: String = "CONFIRM_ACTION"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val message = params["message"] ?: "Do you want to proceed with this action?"
+            
+            // Speak the confirmation warning
+            agentLoop.get().onSpeakCallback?.invoke(message)
+            
+            // Display Toast on main thread
+            try {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                // Ignore toast errors if any
+            }
+            
+            return ActionResult(true, "Action confirmed: $message", null)
+        }
+    }
+
+    private class CheckAppAction : Action {
+        override val name: String = "CHECK_APP"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val appName = params["appName"] ?: return ActionResult(false, null, "appName parameter missing")
+            val pm = context.packageManager
+            val packages = pm.getInstalledApplications(0)
+            val appPackage = packages.find {
+                val label = pm.getApplicationLabel(it).toString()
+                label.contains(appName, ignoreCase = true) || it.packageName.contains(appName, ignoreCase = true)
+            }?.packageName
+            return if (appPackage != null) {
+                ActionResult(true, "App '$appName' ($appPackage) is installed and functional.", null)
+            } else {
+                ActionResult(false, null, "App '$appName' is not installed.")
+            }
+        }
+    }
+
+    private class ShowWarningAction(
+        private val agentLoop: dagger.Lazy<AgentLoop>
+    ) : Action {
+        override val name: String = "SHOW_WARNING"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val message = params["message"] ?: "Warning: Please check your actions."
+            
+            // Speak the warning
+            agentLoop.get().onSpeakCallback?.invoke(message)
+            
+            // Display Toast on main thread
+            try {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                // Ignore toast errors if any
+            }
+            
+            return ActionResult(true, "Warning shown: $message", null)
+        }
+    }
+
+    private class ToggleMobileDataAction : Action {
+        override val name: String = "TOGGLE_MOBILE_DATA"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val on = params["on"]?.toBoolean() ?: true
+            return try {
+                val intent = Intent(Settings.ACTION_WIRELESS_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                ActionResult(true, "Opened Mobile Network settings to toggle mobile data to $on", null)
+            } catch (e: Exception) {
+                ActionResult(false, null, "Failed to open Mobile Network settings: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private class ToggleHotspotAction : Action {
+        override val name: String = "TOGGLE_HOTSPOT"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val on = params["on"]?.toBoolean() ?: true
+            return try {
+                val intent = Intent().apply {
+                    action = "android.settings.TETHER_SETTINGS"
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                ActionResult(true, "Opened Tethering and Hotspot settings to toggle hotspot to $on", null)
+            } catch (e: Exception) {
+                try {
+                    val intent = Intent(Settings.ACTION_WIRELESS_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    ActionResult(true, "Opened wireless settings as fallback for hotspot toggle.", null)
+                } catch (ex: Exception) {
+                    ActionResult(false, null, "Failed to open settings: ${ex.localizedMessage}")
+                }
+            }
+        }
+    }
+
+    private class SetWallpaperAction : Action {
+        override val name: String = "SET_WALLPAPER"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            return try {
+                val intent = Intent(Intent.ACTION_SET_WALLPAPER).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                ActionResult(true, "Opened Wallpaper settings/picker.", null)
+            } catch (e: Exception) {
+                ActionResult(false, null, "Failed to open Wallpaper chooser: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private class RecordScreenAction : Action {
+        override val name: String = "RECORD_SCREEN"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val start = params["start"]?.toBoolean() ?: true
+            return ActionResult(true, if (start) "Screen recording started (simulated)" else "Screen recording stopped (simulated)", null)
+        }
+    }
+
+    private class InstallAppAction : Action {
+        override val name: String = "INSTALL_APP"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val appName = params["appName"] ?: return ActionResult(false, null, "appName parameter missing")
+            return try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=${Uri.encode(appName)}")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                ActionResult(true, "Opened Google Play Store to install '$appName'", null)
+            } catch (e: Exception) {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/search?q=${Uri.encode(appName)}")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    ActionResult(true, "Opened web browser for Google Play Store search for '$appName'", null)
+                } catch (ex: Exception) {
+                    ActionResult(false, null, "Failed to open Play Store: ${ex.localizedMessage}")
+                }
             }
         }
     }

@@ -19,6 +19,7 @@ class LLMProviderFactory @Inject constructor(
     private val togetherAIProvider: Provider<TogetherAIProvider>,
     private val cohereProvider: Provider<CohereProvider>,
     private val deepSeekProvider: Provider<DeepSeekProvider>,
+    private val copilotProvider: Provider<CopilotProvider>,
     private val settingsRepository: SettingsRepository
 ) {
 
@@ -34,6 +35,7 @@ class LLMProviderFactory @Inject constructor(
             "Together AI" -> togetherAIProvider.get()
             "Cohere" -> cohereProvider.get()
             "DeepSeek" -> deepSeekProvider.get()
+            "Copilot API" -> copilotProvider.get()
             else -> geminiProvider.get()
         }
     }
@@ -49,6 +51,7 @@ class LLMProviderFactory @Inject constructor(
             "Together AI",
             "Cohere",
             "DeepSeek",
+            "Copilot API",
             "Ollama"
         )
         val orderedNames = mutableListOf<String>()

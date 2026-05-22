@@ -41,6 +41,7 @@ fun BenchmarkScreen(
         "Together AI",
         "Cohere",
         "DeepSeek",
+        "Copilot API",
         "Ollama"
     )
 

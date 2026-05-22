@@ -82,6 +82,12 @@ class MemoryManager @Inject constructor(
         if (type == MemoryType.WORKING) {
             workingMemory.clear()
         }
+        if (type == MemoryType.EPISODIC) {
+            conversationRepository.clearAll()
+        }
+        if (type == MemoryType.PROCEDURAL) {
+            memoryRepository.clearAllMacros()
+        }
     }
 
     suspend fun searchMemory(query: String): List<Memory> {

@@ -3,6 +3,8 @@ package com.opendroid.ai.core.voice
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -15,18 +17,20 @@ class WakeWordDetector(private val context: Context) {
     private var onWakeWordDetectedCallback: (() -> Unit)? = null
     private var isListening = false
 
+    private val handler = Handler(Looper.getMainLooper())
+    private val restartRunnable = Runnable {
+        startSpeechListening()
+    }
+
     init {
         initializeRecognizer()
     }
 
     private fun initializeRecognizer() {
-        if (SpeechRecognizer.isRecognitionAvailable(context)) {
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
-            intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            }
+        intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         }
     }
 
@@ -38,7 +42,22 @@ class WakeWordDetector(private val context: Context) {
     }
 
     private fun startSpeechListening() {
-        if (!isListening || speechRecognizer == null) return
+        if (!isListening) return
+
+        // Clean up previous instance before creating a new one
+        cleanupRecognizer()
+
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            try {
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+            } catch (e: Exception) {
+                scheduleRestart()
+                return
+            }
+        } else {
+            scheduleRestart()
+            return
+        }
 
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
@@ -48,10 +67,8 @@ class WakeWordDetector(private val context: Context) {
             override fun onEndOfSpeech() {}
             
             override fun onError(error: Int) {
-                // Restart listening loop on error or timeout
-                if (isListening) {
-                    startSpeechListening()
-                }
+                // Restart listening loop on error or timeout after a delay
+                scheduleRestart()
             }
 
             override fun onResults(results: Bundle?) {
@@ -64,9 +81,7 @@ class WakeWordDetector(private val context: Context) {
                         }
                     }
                 }
-                if (isListening) {
-                    startSpeechListening()
-                }
+                scheduleRestart()
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
@@ -87,18 +102,35 @@ class WakeWordDetector(private val context: Context) {
         try {
             speechRecognizer?.startListening(intent)
         } catch (e: Exception) {
-            // If failed to start, try to restart after a delay
+            scheduleRestart()
         }
+    }
+
+    private fun scheduleRestart() {
+        handler.removeCallbacks(restartRunnable)
+        if (isListening) {
+            // Post restart with 1000ms delay to let the audio system settle and prevent rapid flickering/beeping
+            handler.postDelayed(restartRunnable, 1000)
+        }
+    }
+
+    private fun cleanupRecognizer() {
+        try {
+            speechRecognizer?.stopListening()
+        } catch (e: Exception) {}
+        try {
+            speechRecognizer?.destroy()
+        } catch (e: Exception) {}
+        speechRecognizer = null
     }
 
     fun stopListening() {
         isListening = false
-        speechRecognizer?.stopListening()
+        handler.removeCallbacks(restartRunnable)
+        cleanupRecognizer()
     }
 
     fun destroy() {
         stopListening()
-        speechRecognizer?.destroy()
-        speechRecognizer = null
     }
 }

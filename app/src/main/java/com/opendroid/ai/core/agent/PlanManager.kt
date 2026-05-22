@@ -1,5 +1,6 @@
 package com.opendroid.ai.core.agent
 
+import com.opendroid.ai.core.memory.WorkingMemory
 import com.opendroid.ai.data.models.Plan
 import com.opendroid.ai.data.models.PlanStatus
 import com.opendroid.ai.data.models.PlanStep
@@ -13,13 +14,16 @@ import javax.inject.Singleton
 
 @Singleton
 class PlanManager @Inject constructor(
-    private val planRepository: PlanRepository
+    private val planRepository: PlanRepository,
+    private val workingMemory: WorkingMemory
 ) {
     private val _currentPlan = MutableStateFlow<Plan?>(null)
     val currentPlan: StateFlow<Plan?> = _currentPlan.asStateFlow()
 
     suspend fun startNewPlan(plan: Plan) {
-        _currentPlan.value = plan.copy(status = PlanStatus.RUNNING)
+        val runningPlan = plan.copy(status = PlanStatus.RUNNING)
+        _currentPlan.value = runningPlan
+        workingMemory.activePlan = runningPlan
         saveCurrentPlan()
     }
 
@@ -32,13 +36,21 @@ class PlanManager @Inject constructor(
                 step
             }
         }
-        _currentPlan.value = plan.copy(steps = updatedSteps)
+        val updatedPlan = plan.copy(steps = updatedSteps)
+        _currentPlan.value = updatedPlan
+        workingMemory.activePlan = updatedPlan
         saveCurrentPlan()
     }
 
     suspend fun updatePlanStatus(status: PlanStatus) {
         val plan = _currentPlan.value ?: return
-        _currentPlan.value = plan.copy(status = status)
+        val updatedPlan = plan.copy(status = status)
+        _currentPlan.value = updatedPlan
+        if (status == PlanStatus.COMPLETED || status == PlanStatus.FAILED) {
+            workingMemory.activePlan = null
+        } else {
+            workingMemory.activePlan = updatedPlan
+        }
         saveCurrentPlan()
     }
 
@@ -46,6 +58,7 @@ class PlanManager @Inject constructor(
         val plan = planRepository.getPlanById(planId)
         return if (plan != null) {
             _currentPlan.value = plan
+            workingMemory.activePlan = plan
             true
         } else {
             false
@@ -59,6 +72,7 @@ class PlanManager @Inject constructor(
 
     fun clearPlan() {
         _currentPlan.value = null
+        workingMemory.activePlan = null
     }
 
     fun getActiveStep(): PlanStep? {

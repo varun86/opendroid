@@ -26,9 +26,25 @@ class TextToSpeechEngine(
     private val client = OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO)
     private var mediaPlayer: MediaPlayer? = null
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    var onCompletionListener: (() -> Unit)? = null
 
     init {
         tts = TextToSpeech(context, this)
+        tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {}
+            override fun onDone(utteranceId: String?) {
+                mainHandler.post {
+                    onCompletionListener?.invoke()
+                }
+            }
+            override fun onError(utteranceId: String?) {
+                mainHandler.post {
+                    onCompletionListener?.invoke()
+                }
+            }
+        })
     }
 
     override fun onInit(status: Int) {
@@ -97,6 +113,11 @@ class TextToSpeechEngine(
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(tempFile.absolutePath)
                 prepare()
+                setOnCompletionListener {
+                    mainHandler.post {
+                        onCompletionListener?.invoke()
+                    }
+                }
                 start()
             }
             return true

@@ -21,7 +21,11 @@ class CommunicationActions @Inject constructor() {
         SendWhatsAppAction(),
         MakeCallAction(),
         SendSmsAction(),
-        SendEmailAction()
+        SendEmailAction(),
+        SendWhatsAppGroupAction(),
+        MakeVideoCallAction(),
+        ReadMessagesAction(),
+        ReadEmailsAction()
     )
 
     private class SendWhatsAppAction : Action {
@@ -137,6 +141,101 @@ class CommunicationActions @Inject constructor() {
                 ActionResult(true, "Email compose intent fired to $to", null)
             } catch (e: Exception) {
                 ActionResult(false, null, "Email failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private class SendWhatsAppGroupAction : Action {
+        override val name: String = "SEND_WHATSAPP_GROUP"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val groupName = params["groupName"] ?: return ActionResult(false, null, "groupName parameter missing")
+            val message = params["message"] ?: return ActionResult(false, null, "message parameter missing")
+            return try {
+                val intent = Intent(Intent.ACTION_MAIN).apply {
+                    setPackage("com.whatsapp")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                ActionResult(true, "Opened WhatsApp group search/chat for group '$groupName' with message '$message'", null)
+            } catch (e: Exception) {
+                ActionResult(false, null, "Failed to open WhatsApp group: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private class MakeVideoCallAction : Action {
+        override val name: String = "MAKE_VIDEO_CALL"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val contact = params["contact"] ?: return ActionResult(false, null, "contact parameter missing")
+            val app = params["app"] ?: "whatsapp"
+            return try {
+                when (app.lowercase()) {
+                    "whatsapp" -> {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$contact")).apply {
+                            setPackage("com.whatsapp")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    }
+                    else -> {
+                        val pm = context.packageManager
+                        val launchIntent = pm.getLaunchIntentForPackage("com.google.android.apps.meetings")
+                            ?: pm.getLaunchIntentForPackage("com.google.android.apps.tachyon")
+                            ?: pm.getLaunchIntentForPackage("us.zoom.videomeetings")
+                        if (launchIntent != null) {
+                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(launchIntent)
+                        } else {
+                            val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$contact")).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(dialIntent)
+                        }
+                    }
+                }
+                ActionResult(true, "Video call initiated to $contact using $app", null)
+            } catch (e: Exception) {
+                ActionResult(false, null, "Video call failed: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private class ReadMessagesAction : Action {
+        override val name: String = "READ_MESSAGES"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val app = params["app"] ?: "sms"
+            return try {
+                val intent = when (app.lowercase()) {
+                    "whatsapp" -> context.packageManager.getLaunchIntentForPackage("com.whatsapp")
+                    else -> Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_APP_MESSAGING)
+                    }
+                }
+                if (intent != null) {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                    ActionResult(true, "Opened $app messaging app to read messages.", null)
+                } else {
+                    ActionResult(false, null, "Could not open $app messaging app.")
+                }
+            } catch (e: Exception) {
+                ActionResult(false, null, "Failed to read messages: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private class ReadEmailsAction : Action {
+        override val name: String = "READ_EMAILS"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            return try {
+                val intent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_APP_EMAIL)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                ActionResult(true, "Opened default Email app.", null)
+            } catch (e: Exception) {
+                ActionResult(false, null, "Failed to open email app: ${e.localizedMessage}")
             }
         }
     }

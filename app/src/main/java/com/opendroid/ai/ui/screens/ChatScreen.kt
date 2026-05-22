@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -297,6 +298,7 @@ fun ChatScreen(
 fun AgentStatusSubtitle(state: AgentState) {
     val text = when (state) {
         is AgentState.Idle -> "Online & Ready"
+        is AgentState.Listening -> "Listening to voice input..."
         is AgentState.Thinking -> "Analyzing intent & planning..."
         is AgentState.PlanProposed -> "Requires Plan Approval"
         is AgentState.ExecutingPlan -> "Executing: ${state.currentStepDesc}"
@@ -306,6 +308,7 @@ fun AgentStatusSubtitle(state: AgentState) {
     
     val color = when (state) {
         is AgentState.Idle -> AccentNeonGreen
+        is AgentState.Listening -> AccentRed
         is AgentState.Thinking -> AccentPurple
         is AgentState.PlanProposed -> AccentCyan
         is AgentState.ExecutingPlan -> AccentNeonGreen
@@ -571,8 +574,8 @@ fun FloatingOrb(
 fun VoiceWaveform(text: String) {
     val infiniteTransition = rememberInfiniteTransition(label = "waveform")
     val heightScale1 by infiniteTransition.animateFloat(
-        initialValue = 4dp.value,
-        targetValue = 32dp.value,
+        initialValue = 4f,
+        targetValue = 32f,
         animationSpec = infiniteRepeatable(
             animation = tween(400, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
@@ -580,8 +583,8 @@ fun VoiceWaveform(text: String) {
         label = "h1"
     )
     val heightScale2 by infiniteTransition.animateFloat(
-        initialValue = 6dp.value,
-        targetValue = 24dp.value,
+        initialValue = 6f,
+        targetValue = 24f,
         animationSpec = infiniteRepeatable(
             animation = tween(500, delayMillis = 100, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
@@ -589,8 +592,8 @@ fun VoiceWaveform(text: String) {
         label = "h2"
     )
     val heightScale3 by infiniteTransition.animateFloat(
-        initialValue = 8dp.value,
-        targetValue = 40dp.value,
+        initialValue = 8f,
+        targetValue = 40f,
         animationSpec = infiniteRepeatable(
             animation = tween(600, delayMillis = 50, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse

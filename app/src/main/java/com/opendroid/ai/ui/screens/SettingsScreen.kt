@@ -45,6 +45,7 @@ fun SettingsScreen(
         "Together AI",
         "Cohere",
         "DeepSeek",
+        "Copilot API",
         "Ollama"
     )
 
@@ -250,6 +251,48 @@ fun SettingsScreen(
                 }
             }
 
+            // Copilot Endpoint Config Card (Visible only when Copilot API is selected)
+            if (config.activeProvider == "Copilot API") {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                        colors = CardDefaults.cardColors(containerColor = CardBackground)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "COPILOT LOCAL ENDPOINT",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = AccentNeonGreen
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = config.copilotUrl,
+                                onValueChange = { viewModel.updateCopilotUrl(it) },
+                                label = { Text("Copilot Server URL", fontSize = 12.sp) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = AccentNeonGreen,
+                                    unfocusedBorderColor = BorderColor,
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Use local LAN IP (e.g. http://192.168.1.50:4141) if testing from a physical Android device.",
+                                fontSize = 10.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+
             // Provider API Keys Card
             item {
                 Card(
@@ -375,6 +418,129 @@ fun SettingsScreen(
                                     color = TextSecondary
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // Planning & Automation Preferences Card
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, BorderColor, RoundedCornerShape(12.dp)),
+                    colors = CardDefaults.cardColors(containerColor = CardBackground)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "PLANNING & AUTOMATION",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = AccentCyan
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Auto-Execute Plans",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "Run planned actions automatically without requiring manual approval.",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                            Switch(
+                                checked = config.autoConfirmPlans,
+                                onCheckedChange = { viewModel.updateAutoConfirmPlans(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = AccentNeonGreen,
+                                    checkedTrackColor = AccentNeonGreen.copy(alpha = 0.5f)
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(BorderColor)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Multi-Agent Planning Mode",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "Use critic and plan merger agents for safer, more robust plan generation.",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                            Switch(
+                                checked = config.multiAgentModeEnabled,
+                                onCheckedChange = { viewModel.updateMultiAgentMode(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = AccentNeonGreen,
+                                    checkedTrackColor = AccentNeonGreen.copy(alpha = 0.5f)
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(BorderColor)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Show Floating Button",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "Show a tiny floating bubble to launch the app or record commands directly.",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                            Switch(
+                                checked = config.showFloatingButton,
+                                onCheckedChange = { viewModel.updateShowFloatingButton(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = AccentNeonGreen,
+                                    checkedTrackColor = AccentNeonGreen.copy(alpha = 0.5f)
+                                )
+                            )
                         }
                     }
                 }

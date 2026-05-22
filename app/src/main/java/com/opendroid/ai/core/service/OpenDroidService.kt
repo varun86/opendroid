@@ -9,11 +9,18 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.opendroid.ai.core.agent.AgentLoop
+import com.opendroid.ai.core.agent.AgentState
 import com.opendroid.ai.core.voice.SpeechRecognitionEngine
 import com.opendroid.ai.core.voice.TextToSpeechEngine
 import com.opendroid.ai.core.voice.WakeWordDetector
 import com.opendroid.ai.data.repository.SettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -29,7 +36,11 @@ class OpenDroidService : Service() {
     private lateinit var speechRecognitionEngine: SpeechRecognitionEngine
     private lateinit var textToSpeechEngine: TextToSpeechEngine
 
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var showFloatingButton = false
+
     companion object {
+        const val ACTION_TRIGGER_RECORD = "com.opendroid.ai.action.TRIGGER_RECORD"
         private const val CHANNEL_ID = "opendroid_channel"
         private const val NOTIFICATION_ID = 2024
         
@@ -57,12 +68,26 @@ class OpenDroidService : Service() {
             textToSpeechEngine.speak(text)
         }
 
+        // Set TTS completion listener to transition back to Idle
+        textToSpeechEngine.onCompletionListener = {
+            agentLoop.setAgentState(AgentState.Idle)
+        }
+
         // Start Foreground Notification
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
 
-        // Start Wake Word Detection
-        startWakeWordDetection()
+        // Monitor floating button config to start/stop wake word detection dynamically
+        serviceScope.launch {
+            settingsRepository.llmConfig.collectLatest { config ->
+                showFloatingButton = config.showFloatingButton
+                if (showFloatingButton) {
+                    wakeWordDetector.stopListening()
+                } else {
+                    startWakeWordDetection()
+                }
+            }
+        }
     }
 
     private fun startWakeWordDetection() {
@@ -77,27 +102,41 @@ class OpenDroidService : Service() {
         // Temporarily pause wake word to avoid hearing itself
         wakeWordDetector.stopListening()
 
+        // Set agent state to Listening
+        agentLoop.setAgentState(AgentState.Listening)
+
         // Start speech recognizer for query input
         speechRecognitionEngine.startListening(
             onResult = { query ->
                 agentLoop.processQuery(query, this)
-                // Resume wake word detection
-                wakeWordDetector.startListening {
-                    textToSpeechEngine.speak("OpenDroid online.")
-                    startListeningForQuery()
+                // Resume wake word detection only if floating button is disabled
+                if (!showFloatingButton) {
+                    wakeWordDetector.startListening {
+                        textToSpeechEngine.speak("OpenDroid online.")
+                        startListeningForQuery()
+                    }
+                } else {
+                    agentLoop.setAgentState(AgentState.Idle)
                 }
             },
-            onError = { error ->
-                // Resume wake word detection
-                wakeWordDetector.startListening {
-                    textToSpeechEngine.speak("OpenDroid online.")
-                    startListeningForQuery()
+            onError = { _ ->
+                agentLoop.setAgentState(AgentState.Idle)
+                // Resume wake word detection only if floating button is disabled
+                if (!showFloatingButton) {
+                    wakeWordDetector.startListening {
+                        textToSpeechEngine.speak("OpenDroid online.")
+                        startListeningForQuery()
+                    }
                 }
             }
         )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_TRIGGER_RECORD) {
+            textToSpeechEngine.speak("OpenDroid online.")
+            startListeningForQuery()
+        }
         return START_STICKY
     }
 
@@ -107,6 +146,7 @@ class OpenDroidService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        serviceScope.cancel()
         wakeWordDetector.destroy()
         speechRecognitionEngine.destroy()
         textToSpeechEngine.destroy()

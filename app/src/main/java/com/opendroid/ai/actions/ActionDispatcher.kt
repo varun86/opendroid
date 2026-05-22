@@ -17,7 +17,8 @@ class ActionDispatcher @Inject constructor(
     private val foodShoppingActions: FoodShoppingActions,
     private val smartHomeActions: SmartHomeActions,
     private val financeActions: FinanceActions,
-    private val macroActions: MacroActions
+    private val macroActions: MacroActions,
+    private val advancedControlActions: AdvancedControlActions
 ) {
 
     private val actionsMap: Map<String, Action> = buildMap {
@@ -31,6 +32,7 @@ class ActionDispatcher @Inject constructor(
         putAll(smartHomeActions.getActions().associateBy { it.name })
         putAll(financeActions.getActions().associateBy { it.name })
         putAll(macroActions.getActions().associateBy { it.name })
+        putAll(advancedControlActions.getActions().associateBy { it.name })
     }
 
     fun hasAction(actionName: String): Boolean = actionsMap.containsKey(actionName)

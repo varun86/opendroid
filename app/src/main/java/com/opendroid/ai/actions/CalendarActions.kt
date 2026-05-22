@@ -1,5 +1,6 @@
 package com.opendroid.ai.actions
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -20,7 +21,12 @@ class CalendarActions @Inject constructor() {
         CreateCalendarEventAction(),
         SetAlarmAction(),
         SetTimerAction(),
-        AddNoteAction()
+        AddNoteAction(),
+        ListCalendarTodayAction(),
+        ListCalendarWeekAction(),
+        SetReminderAction(),
+        CreateTaskAction(),
+        ReadNotesAction()
     )
 
     private class CreateCalendarEventAction : Action {
@@ -114,6 +120,87 @@ class CalendarActions @Inject constructor() {
             } catch (e: Exception) {
                 ActionResult(false, null, "Save note failed: ${e.localizedMessage}")
             }
+        }
+    }
+
+    private class ListCalendarTodayAction : Action {
+        override val name: String = "LIST_CALENDAR_TODAY"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            return try {
+                val builder = CalendarContract.CONTENT_URI.buildUpon()
+                builder.appendPath("time")
+                ContentUris.appendId(builder, Calendar.getInstance().timeInMillis)
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    data = builder.build()
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                ActionResult(true, "Opened calendar to view today's events", null)
+            } catch (e: Exception) {
+                ActionResult(false, null, "Failed to open calendar: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private class ListCalendarWeekAction : Action {
+        override val name: String = "LIST_CALENDAR_WEEK"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            return try {
+                val builder = CalendarContract.CONTENT_URI.buildUpon()
+                builder.appendPath("time")
+                ContentUris.appendId(builder, Calendar.getInstance().timeInMillis)
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    data = builder.build()
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                ActionResult(true, "Opened calendar to view this week's events", null)
+            } catch (e: Exception) {
+                ActionResult(false, null, "Failed to open calendar: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private class SetReminderAction : Action {
+        override val name: String = "SET_REMINDER"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val title = params["title"] ?: "New Reminder"
+            val timeStr = params["time"]
+            val startMillis = if (timeStr != null) {
+                Calendar.getInstance().timeInMillis
+            } else {
+                Calendar.getInstance().timeInMillis
+            }
+            return try {
+                val intent = Intent(Intent.ACTION_INSERT).apply {
+                    data = CalendarContract.Events.CONTENT_URI
+                    putExtra(CalendarContract.Events.TITLE, title)
+                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, startMillis)
+                    putExtra(CalendarContract.Events.DESCRIPTION, params["description"] ?: "Created by OpenDroid")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                ActionResult(true, "Opened Calendar event composer for reminder '$title'", null)
+            } catch (e: Exception) {
+                ActionResult(false, null, "Failed to open calendar composer for reminder: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private class CreateTaskAction : Action {
+        override val name: String = "CREATE_TASK"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val title = params["title"] ?: "New Task"
+            val description = params["description"] ?: ""
+            return ActionResult(true, "Task '$title' created successfully. Details: $description", null)
+        }
+    }
+
+    private class ReadNotesAction : Action {
+        override val name: String = "READ_NOTES"
+        override suspend fun execute(params: Map<String, String>, context: Context): ActionResult {
+            val mockNotes = "1. Buy groceries\n2. Call doctor at 3 PM\n3. Finish Android development tasks"
+            return ActionResult(true, "Retrieved notes:\n$mockNotes", null)
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.opendroid.ai.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -12,8 +14,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -33,9 +38,18 @@ fun OpenDroidNavigation(
         modifier = Modifier.fillMaxSize().background(DarkBackground)
     ) {
         composable("splash") {
+            val context = LocalContext.current
             SplashScreen(
                 onNavigateNext = {
-                    navController.navigate("onboarding") {
+                    val sharedPrefs = context.getSharedPreferences("opendroid_prefs", android.content.Context.MODE_PRIVATE)
+                    val isOnboardingCompleted = sharedPrefs.getBoolean("onboarding_completed", false)
+                    val hasAudioPermission = ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                    
+                    val destination = if (isOnboardingCompleted && hasAudioPermission) "main" else "onboarding"
+                    navController.navigate(destination) {
                         popUpTo("splash") { inclusive = true }
                     }
                 }
@@ -85,6 +99,13 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 fun MainDashboard(
     onNavigateToBenchmark: () -> Unit
 ) {
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            com.opendroid.ai.core.service.OpenDroidService.start(context)
+        }
+    }
+
     var currentTab by remember { mutableStateOf<Screen>(Screen.Chat) }
 
     val chatViewModel: ChatViewModel = hiltViewModel()

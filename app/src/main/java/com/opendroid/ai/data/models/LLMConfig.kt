@@ -8,11 +8,13 @@ data class LLMConfig(
     val activeModel: String = "gemini-2.0-flash",
     val apiKeys: Map<String, String> = emptyMap(), // Provider -> API Key
     val customEndpoints: Map<String, String> = emptyMap(), // Provider -> URL
-    val autoConfirmPlans: Boolean = false,
+    val autoConfirmPlans: Boolean = true,
     val latencyBenchmarks: Map<String, Long> = emptyMap(), // Provider -> latency Ms
     val elevenLabsApiKey: String = "",
     val elevenLabsVoiceId: String = "",
     val ollamaUrl: String = "http://10.0.2.2:11434", // Default to Android emulator host loopback
-    val multiAgentModeEnabled: Boolean = false
+    val copilotUrl: String = "http://10.0.2.2:4141",
+    val multiAgentModeEnabled: Boolean = false,
+    val showFloatingButton: Boolean = true
 )
 

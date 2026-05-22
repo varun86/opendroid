@@ -29,6 +29,7 @@ import javax.inject.Singleton
 
 sealed interface AgentState {
     object Idle : AgentState
+    object Listening : AgentState
     object Thinking : AgentState
     data class PlanProposed(val plan: Plan) : AgentState
     data class ExecutingPlan(val currentStepDesc: String) : AgentState
@@ -52,6 +53,10 @@ class AgentLoop @Inject constructor(
     private val _agentState = MutableStateFlow<AgentState>(AgentState.Idle)
     val agentState: StateFlow<AgentState> = _agentState.asStateFlow()
 
+    fun setAgentState(state: AgentState) {
+        _agentState.value = state
+    }
+
     // Speak callback to be implemented by TTS service
     var onSpeakCallback: ((String) -> Unit)? = null
 
@@ -71,8 +76,8 @@ class AgentLoop @Inject constructor(
                 conversationRepository.insertMessage(userMsg)
 
                 // 1. Intent Classification
-                val isComplex = intentClassifier.isComplex(query)
-                if (isComplex) {
+                val requiresAction = intentClassifier.requiresAction(query)
+                if (requiresAction) {
                     generatePlan(query, context)
                 } else {
                     executeSimpleQuery(query)
@@ -154,59 +159,61 @@ class AgentLoop @Inject constructor(
             
             val config = settingsRepository.llmConfig.first()
             val plan = if (config.multiAgentModeEnabled) {
-                val plannerDeferred = kotlinx.coroutines.async(Dispatchers.Default) {
-                    provider.complete(
+                kotlinx.coroutines.coroutineScope {
+                    val plannerDeferred = async(Dispatchers.Default) {
+                        provider.complete(
+                            LLMRequest(
+                                systemPrompt = sysPrompt,
+                                messages = listOf(
+                                    ChatMessage(id = UUID.randomUUID().toString(), text = query, sender = ChatMessage.Sender.USER)
+                                ),
+                                temperature = 0.2f,
+                                maxTokens = 1500,
+                                responseFormat = ResponseFormat.JSON
+                            )
+                        )
+                    }
+
+                    val criticDeferred = async(Dispatchers.Default) {
+                        provider.complete(
+                            LLMRequest(
+                                systemPrompt = PlanningPrompts.CRITIC_SYSTEM_PROMPT,
+                                messages = listOf(
+                                    ChatMessage(id = UUID.randomUUID().toString(), text = query, sender = ChatMessage.Sender.USER)
+                                ),
+                                temperature = 0.2f,
+                                maxTokens = 1000,
+                                responseFormat = ResponseFormat.TEXT
+                            )
+                        )
+                    }
+
+                    val plannerResponse = plannerDeferred.await()
+                    val criticResponse = criticDeferred.await()
+
+                    val mergePrompt = """
+                        ${PlanningPrompts.MERGE_SYSTEM_PROMPT}
+                        
+                        User Goal: $query
+                        Initial Plan: ${plannerResponse.content}
+                        Critic Safety & Edge Case Report: ${criticResponse.content}
+                    """.trimIndent()
+
+                    val mergeResponse = provider.complete(
                         LLMRequest(
-                            systemPrompt = sysPrompt,
+                            systemPrompt = mergePrompt,
                             messages = listOf(
-                                ChatMessage(id = UUID.randomUUID().toString(), text = query, sender = ChatMessage.Sender.USER)
+                                ChatMessage(id = UUID.randomUUID().toString(), text = "Merge the plan and critique into the final JSON plan.", sender = ChatMessage.Sender.USER)
                             ),
-                            temperature = 0.2f,
+                            temperature = 0.1f,
                             maxTokens = 1500,
                             responseFormat = ResponseFormat.JSON
                         )
                     )
+
+                    val cleaned = cleanPlanJson(mergeResponse.content)
+                    json.decodeFromString<Plan>(cleaned)
                 }
-
-                val criticDeferred = kotlinx.coroutines.async(Dispatchers.Default) {
-                    provider.complete(
-                        LLMRequest(
-                            systemPrompt = PlanningPrompts.CRITIC_SYSTEM_PROMPT,
-                            messages = listOf(
-                                ChatMessage(id = UUID.randomUUID().toString(), text = query, sender = ChatMessage.Sender.USER)
-                            ),
-                            temperature = 0.2f,
-                            maxTokens = 1000,
-                            responseFormat = ResponseFormat.TEXT
-                        )
-                    )
-                }
-
-                val plannerResponse = plannerDeferred.await()
-                val criticResponse = criticDeferred.await()
-
-                val mergePrompt = """
-                    ${PlanningPrompts.MERGE_SYSTEM_PROMPT}
-                    
-                    User Goal: $query
-                    Initial Plan: ${plannerResponse.content}
-                    Critic Safety & Edge Case Report: ${criticResponse.content}
-                """.trimIndent()
-
-                val mergeResponse = provider.complete(
-                    LLMRequest(
-                        systemPrompt = mergePrompt,
-                        messages = listOf(
-                            ChatMessage(id = UUID.randomUUID().toString(), text = "Merge the plan and critique into the final JSON plan.", sender = ChatMessage.Sender.USER)
-                        ),
-                        temperature = 0.1f,
-                        maxTokens = 1500,
-                        responseFormat = ResponseFormat.JSON
-                    )
-                )
-
-                val cleaned = cleanPlanJson(mergeResponse.content)
-                json.decodeFromString<Plan>(cleaned)
             } else {
                 val response = provider.complete(
                     LLMRequest(
@@ -224,7 +231,11 @@ class AgentLoop @Inject constructor(
             }
 
             planManager.startNewPlan(plan)
-            _agentState.value = AgentState.PlanProposed(plan)
+            if (config.autoConfirmPlans) {
+                executePlanLoop(plan, context)
+            } else {
+                _agentState.value = AgentState.PlanProposed(plan)
+            }
         } catch (e: Exception) {
             // Fallback: If planning fails, process as simple query
             executeSimpleQuery(query)

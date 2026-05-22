@@ -5,9 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.opendroid.ai.data.models.LLMConfig
 import com.opendroid.ai.data.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -22,14 +22,17 @@ class SettingsViewModel @Inject constructor(
     private val llmProviderFactory: Lazy<com.opendroid.ai.core.llm.LLMProviderFactory>
 ) : ViewModel() {
 
-    val llmConfig: StateFlow<LLMConfig> = settingsRepository.llmConfig
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = LLMConfig()
-        )
+    private val _llmConfig = MutableStateFlow(LLMConfig())
+    val llmConfig: StateFlow<LLMConfig> = _llmConfig
+
+    init {
+        viewModelScope.launch {
+            _llmConfig.value = settingsRepository.llmConfig.first()
+        }
+    }
 
     fun updateActiveProvider(provider: String) {
+        _llmConfig.value = _llmConfig.value.copy(activeProvider = provider)
         viewModelScope.launch {
             settingsRepository.updateConfig { current ->
                 current.copy(activeProvider = provider)
@@ -38,6 +41,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updateActiveModel(model: String) {
+        _llmConfig.value = _llmConfig.value.copy(activeModel = model)
         viewModelScope.launch {
             settingsRepository.updateConfig { current ->
                 current.copy(activeModel = model)
@@ -46,16 +50,20 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updateApiKey(providerName: String, key: String) {
+        val keys = _llmConfig.value.apiKeys.toMutableMap()
+        keys[providerName] = key
+        _llmConfig.value = _llmConfig.value.copy(apiKeys = keys)
         viewModelScope.launch {
             settingsRepository.updateConfig { current ->
-                val keys = current.apiKeys.toMutableMap()
-                keys[providerName] = key
-                current.copy(apiKeys = keys)
+                val currentKeys = current.apiKeys.toMutableMap()
+                currentKeys[providerName] = key
+                current.copy(apiKeys = currentKeys)
             }
         }
     }
 
     fun updateElevenLabsApiKey(key: String) {
+        _llmConfig.value = _llmConfig.value.copy(elevenLabsApiKey = key)
         viewModelScope.launch {
             settingsRepository.updateConfig { current ->
                 current.copy(elevenLabsApiKey = key)
@@ -64,6 +72,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updateElevenLabsVoiceId(voiceId: String) {
+        _llmConfig.value = _llmConfig.value.copy(elevenLabsVoiceId = voiceId)
         viewModelScope.launch {
             settingsRepository.updateConfig { current ->
                 current.copy(elevenLabsVoiceId = voiceId)
@@ -72,9 +81,19 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updateOllamaUrl(url: String) {
+        _llmConfig.value = _llmConfig.value.copy(ollamaUrl = url)
         viewModelScope.launch {
             settingsRepository.updateConfig { current ->
                 current.copy(ollamaUrl = url)
+            }
+        }
+    }
+
+    fun updateCopilotUrl(url: String) {
+        _llmConfig.value = _llmConfig.value.copy(copilotUrl = url)
+        viewModelScope.launch {
+            settingsRepository.updateConfig { current ->
+                current.copy(copilotUrl = url)
             }
         }
     }
@@ -91,19 +110,52 @@ class SettingsViewModel @Inject constructor(
                         responseFormat = ResponseFormat.TEXT
                     )
                     val response = provider.complete(request)
+                    val updatedBenchmarks = _llmConfig.value.latencyBenchmarks.toMutableMap()
+                    updatedBenchmarks[providerName] = response.latencyMs
+                    _llmConfig.value = _llmConfig.value.copy(latencyBenchmarks = updatedBenchmarks)
                     settingsRepository.updateConfig { current ->
-                        val updatedBenchmarks = current.latencyBenchmarks.toMutableMap()
-                        updatedBenchmarks[providerName] = response.latencyMs
-                        current.copy(latencyBenchmarks = updatedBenchmarks)
+                        val currentBenchmarks = current.latencyBenchmarks.toMutableMap()
+                        currentBenchmarks[providerName] = response.latencyMs
+                        current.copy(latencyBenchmarks = currentBenchmarks)
                     }
                 }
             } catch (e: Exception) {
                 // Keep the record but fail with high number
+                val updatedBenchmarks = _llmConfig.value.latencyBenchmarks.toMutableMap()
+                updatedBenchmarks[providerName] = 9999L
+                _llmConfig.value = _llmConfig.value.copy(latencyBenchmarks = updatedBenchmarks)
                 settingsRepository.updateConfig { current ->
-                    val updatedBenchmarks = current.latencyBenchmarks.toMutableMap()
-                    updatedBenchmarks[providerName] = 9999L
-                    current.copy(latencyBenchmarks = updatedBenchmarks)
+                    val currentBenchmarks = current.latencyBenchmarks.toMutableMap()
+                    currentBenchmarks[providerName] = 9999L
+                    current.copy(latencyBenchmarks = currentBenchmarks)
                 }
+            }
+        }
+    }
+
+    fun updateAutoConfirmPlans(enabled: Boolean) {
+        _llmConfig.value = _llmConfig.value.copy(autoConfirmPlans = enabled)
+        viewModelScope.launch {
+            settingsRepository.updateConfig { current ->
+                current.copy(autoConfirmPlans = enabled)
+            }
+        }
+    }
+
+    fun updateMultiAgentMode(enabled: Boolean) {
+        _llmConfig.value = _llmConfig.value.copy(multiAgentModeEnabled = enabled)
+        viewModelScope.launch {
+            settingsRepository.updateConfig { current ->
+                current.copy(multiAgentModeEnabled = enabled)
+            }
+        }
+    }
+
+    fun updateShowFloatingButton(enabled: Boolean) {
+        _llmConfig.value = _llmConfig.value.copy(showFloatingButton = enabled)
+        viewModelScope.launch {
+            settingsRepository.updateConfig { current ->
+                current.copy(showFloatingButton = enabled)
             }
         }
     }
